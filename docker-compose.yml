@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   mongodb:
@@ -39,6 +39,29 @@ services:
       RABBITMQ_DEFAULT_PASS: password123
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - realtime-network
+
+  realtime-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: realtime-app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://admin:password123@mongodb:27017/realtimemessagesystem?authSource=admin}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://admin:password123@rabbitmq:5672}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-12345}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-super-secret-refresh-key-12345}
+      NODE_ENV: ${NODE_ENV:-development}
+    depends_on:
+      - mongodb
+      - redis
+      - rabbitmq
     networks:
       - realtime-network
 
