@@ -50,7 +50,7 @@ async function startMessageConsumer() {
           conversation.id,
           senderId,
           content,
-          "automatic" // Message type
+          "auto" // Message type
         );
 
         // Emit message to receiver via Socket.IO
