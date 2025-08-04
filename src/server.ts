@@ -19,6 +19,7 @@ import {
 
 import { connectDB } from "./config/db";
 import { connectRedis } from "./config/redis";
+import { initializeElasticsearch } from "./config/elasticsearch";
 import { RabbitMQService } from "./services/rabbitmq";
 import { MessageScheduler } from "./jobs/message-scheduler";
 import { QueueManager } from "./jobs/queue-manager";
@@ -31,6 +32,7 @@ import authRoutes from "./api/auth/auth.routes";
 import userRoutes from "./api/users/user.routes";
 import conversationRoutes from "./api/conversations/conversation.routes";
 import messageRoutes from "./api/messages/message.routes";
+import { searchRoutes } from "./api/search/search.routes";
 import testRoutes from "./api/test/test.routes";
 
 dotenv.config();
@@ -60,7 +62,7 @@ app.use(cors());
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: 1000, // limit each IP to 1000 requests per windowMs
 });
 app.use(limiter);
 
@@ -72,6 +74,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/conversations", conversationRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/search", searchRoutes);
 
 // Test routes (only in development)
 if (process.env.NODE_ENV !== "production") {
@@ -153,6 +156,7 @@ const startServer = async () => {
   try {
     await connectDB();
     await connectRedis();
+    await initializeElasticsearch();
     await RabbitMQService.connect();
 
     // Start cron jobs

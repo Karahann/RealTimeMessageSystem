@@ -1,5 +1,7 @@
 import { Message } from "../../models/Message";
 import { Conversation } from "../../models/Conversation";
+import { MessageSearchService } from "../../services/message-search.service";
+import { logger } from "../../utils/logger";
 import mongoose from "mongoose";
 
 export class MessageService {
@@ -76,6 +78,24 @@ export class MessageService {
 
     await message.save();
     await message.populate("senderId", "username email");
+
+    // Index message in Elasticsearch for search
+    try {
+      const messageWithSender = {
+        ...message.toObject(),
+        _id: message._id.toString(),
+        conversationId: message.conversationId.toString(),
+        senderId: message.senderId.toString(),
+        senderUsername: (message.senderId as any)?.username || "Unknown",
+      } as any;
+      await MessageSearchService.indexMessage(messageWithSender);
+    } catch (error: any) {
+      logger.error("Failed to index message in Elasticsearch", {
+        messageId: message._id.toString(),
+        error: error.message,
+      });
+      // Don't throw error - indexing failure shouldn't break message creation
+    }
 
     // Update conversation's last message
     conversation.lastMessage = message._id as any;

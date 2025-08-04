@@ -42,6 +42,36 @@ services:
     networks:
       - realtime-network
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: realtime-elasticsearch
+    restart: always
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - realtime-network
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: realtime-kibana
+    restart: always
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - realtime-network
+
   realtime-app:
     build:
       context: .
@@ -59,10 +89,12 @@ services:
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-12345}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-super-secret-refresh-key-12345}
       NODE_ENV: ${NODE_ENV:-development}
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:-http://elasticsearch:9200}
     depends_on:
       - mongodb
       - redis
       - rabbitmq
+      - elasticsearch
     networks:
       - realtime-network
 
@@ -70,6 +102,7 @@ volumes:
   mongodb_data:
   redis_data:
   rabbitmq_data:
+  elasticsearch_data:
 
 networks:
   realtime-network:

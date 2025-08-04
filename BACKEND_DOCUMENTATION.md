@@ -274,7 +274,7 @@ Content-Type: application/json
 #### 1. Mesaj Geçmişi
 
 ```http
-GET /api/messages/:conversationId?page=1&limit=50
+GET /api/messages/conversations/:conversationId?page=1&limit=50
 Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
@@ -1001,9 +1001,12 @@ const useMessages = (conversationId, socket) => {
 
   const loadMessages = async () => {
     setLoading(true);
-    const response = await fetch(`/api/messages/${conversationId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await fetch(
+      `/api/messages/conversations/${conversationId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
 
     if (response.ok) {
       const data = await response.json();

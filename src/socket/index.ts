@@ -3,6 +3,7 @@ import { socketAuthMiddleware, AuthenticatedSocket } from "./auth";
 import { redisClient } from "../config/redis";
 import { MessageService } from "../api/messages/message.service";
 import { ConversationService } from "../api/conversations/conversation.service";
+import { Conversation } from "../models/Conversation";
 import { logger } from "../utils/logger";
 import { captureError, setUser, addBreadcrumb } from "../config/sentry";
 
@@ -63,10 +64,17 @@ export const socketHandler = (io: Server) => {
         const { conversationId } = data;
 
         // Verify user is participant in this conversation
-        const conversation = await ConversationService.createOrGetConversation(
-          userId,
-          conversationId
-        );
+        const conversation = await Conversation.findOne({
+          _id: conversationId,
+          participants: userId,
+        }).populate("participants", "username email");
+
+        if (!conversation) {
+          socket.emit("error", {
+            message: "Conversation not found or access denied",
+          });
+          return;
+        }
 
         socket.join(conversationId);
 
