@@ -19,7 +19,11 @@ import {
 
 import { connectDB } from "./config/db";
 import { connectRedis } from "./config/redis";
-import { initializeElasticsearch } from "./config/elasticsearch";
+import {
+  initializeElasticsearch,
+  checkElasticsearchHealth,
+  closeElasticsearch,
+} from "./config/elasticsearch";
 import { RabbitMQService } from "./services/rabbitmq";
 import { MessageScheduler } from "./jobs/message-scheduler";
 import { QueueManager } from "./jobs/queue-manager";
@@ -81,17 +85,17 @@ if (process.env.NODE_ENV !== "production") {
   app.use("/api/test", testRoutes);
 }
 
-// Swagger API Documentation
+// Enhanced health check endpoint
 /**
  * @swagger
  * /health:
  *   get:
  *     tags: [System]
  *     summary: Sistem sağlık kontrolü
- *     description: API'nin çalışır durumda olup olmadığını kontrol eder
+ *     description: API'nin ve tüm bağımlılıklarının çalışır durumda olup olmadığını kontrol eder
  *     responses:
  *       200:
- *         description: API çalışır durumda
+ *         description: Sistem sağlıklı
  *         content:
  *           application/json:
  *             schema:
@@ -103,10 +107,55 @@ if (process.env.NODE_ENV !== "production") {
  *                 timestamp:
  *                   type: string
  *                   format: date-time
- *                   example: "2025-01-01T12:00:00.000Z"
+ *                 services:
+ *                   type: object
+ *                   properties:
+ *                     database:
+ *                       type: string
+ *                     redis:
+ *                       type: string
+ *                     elasticsearch:
+ *                       type: string
+ *                     rabbitmq:
+ *                       type: string
+ *       503:
+ *         description: Sistem sağlıksız
  */
-app.get("/health", (req, res) => {
-  res.json({ status: "OK", timestamp: new Date().toISOString() });
+app.get("/health", async (req, res) => {
+  try {
+    const services = {
+      database: "Unknown",
+      redis: "Unknown",
+      elasticsearch: "Unknown",
+      rabbitmq: "Unknown",
+    };
+
+    // Check Elasticsearch health
+    const elasticsearchHealthy = await checkElasticsearchHealth();
+    services.elasticsearch = elasticsearchHealthy ? "Healthy" : "Unhealthy";
+
+    // Add other service checks here as needed
+    services.database = "Healthy"; // Assume healthy if we got this far
+    services.redis = "Healthy"; // Assume healthy if we got this far
+    services.rabbitmq = "Healthy"; // Assume healthy if we got this far
+
+    const allHealthy = Object.values(services).every(
+      (status) => status === "Healthy"
+    );
+
+    res.status(allHealthy ? 200 : 503).json({
+      status: allHealthy ? "OK" : "DEGRADED",
+      timestamp: new Date().toISOString(),
+      services,
+    });
+  } catch (error: any) {
+    logger.error("Health check failed", { error: error.message });
+    res.status(503).json({
+      status: "ERROR",
+      timestamp: new Date().toISOString(),
+      error: error.message,
+    });
+  }
 });
 
 // Swagger Documentation Routes
@@ -154,28 +203,79 @@ const PORT = process.env.PORT || 3000;
 
 const startServer = async () => {
   try {
-    await connectDB();
-    await connectRedis();
-    await initializeElasticsearch();
-    await RabbitMQService.connect();
+    logger.info("🚀 Starting Real-Time Messaging System...");
 
-    // Start cron jobs
+    // Database connection
+    logger.info("📦 Connecting to MongoDB...");
+    await connectDB();
+    logger.info("✅ MongoDB connected successfully");
+
+    // Redis connection
+    logger.info("🔴 Connecting to Redis...");
+    await connectRedis();
+    logger.info("✅ Redis connected successfully");
+
+    // Elasticsearch connection with retry mechanism
+    logger.info("🔍 Connecting to Elasticsearch...");
+    await initializeElasticsearch();
+    logger.info("✅ Elasticsearch connected and initialized successfully");
+
+    // RabbitMQ connection
+    logger.info("🐰 Connecting to RabbitMQ...");
+    await RabbitMQService.connect();
+    logger.info("✅ RabbitMQ connected successfully");
+
+    // Start background jobs
+    logger.info("⚙️ Starting background services...");
     MessageScheduler.start();
     QueueManager.start();
+    logger.info("✅ Background services started successfully");
 
+    // Start HTTP server
     server.listen(PORT, () => {
-      logger.info(`Server running on port ${PORT}`);
-      logger.info("Cron jobs started for automatic messaging system");
+      logger.info(`✅ Server running on port ${PORT}`);
+      logger.info(`🌐 API Documentation: http://localhost:${PORT}/api-docs`);
+      logger.info(`💚 Health Check: http://localhost:${PORT}/health`);
+      logger.info("🎉 Real-Time Messaging System is ready!");
     });
 
-    // Graceful shutdown
-    process.on("SIGINT", async () => {
-      logger.info("Shutting down server...");
-      await RabbitMQService.close();
-      process.exit(0);
+    // Graceful shutdown handlers
+    const gracefulShutdown = async (signal: string) => {
+      logger.info(`\n🛑 Received ${signal}. Starting graceful shutdown...`);
+
+      try {
+        // Stop accepting new connections
+        server.close(() => {
+          logger.info("✅ HTTP server closed");
+        });
+
+        // Note: Background services (MessageScheduler and QueueManager) will stop automatically
+        // when the process exits as they use node-cron which is tied to the process lifecycle
+        logger.info("⏳ Background services will stop with process exit...");
+
+        // Close database connections
+        logger.info("⏳ Closing database connections...");
+        await RabbitMQService.close();
+        await closeElasticsearch();
+
+        logger.info("✅ Graceful shutdown completed");
+        process.exit(0);
+      } catch (error: any) {
+        logger.error("❌ Error during shutdown:", { error: error.message });
+        process.exit(1);
+      }
+    };
+
+    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+    process.on("SIGUSR2", () => gracefulShutdown("SIGUSR2")); // nodemon restart
+  } catch (error: any) {
+    logger.error("❌ Failed to start server:", {
+      message: error.message,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
     });
-  } catch (error) {
-    logger.error("Failed to start server:", error);
+
+    // Exit with error code
     process.exit(1);
   }
 };

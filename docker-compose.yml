@@ -15,6 +15,12 @@ services:
       - mongodb_data:/data/db
     networks:
       - realtime-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   redis:
     image: redis:7.2-alpine
@@ -26,6 +32,11 @@ services:
       - redis_data:/data
     networks:
       - realtime-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   rabbitmq:
     image: rabbitmq:3.12-management-alpine
@@ -41,6 +52,11 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
       - realtime-network
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
@@ -52,12 +68,27 @@ services:
       - xpack.security.enabled=false
       - xpack.security.http.ssl.enabled=false
       - xpack.security.transport.ssl.enabled=false
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
     ports:
       - "9200:9200"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     networks:
       - realtime-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -f http://localhost:9200/_cluster/health?wait_for_status=green&timeout=1s || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.11.0
@@ -67,8 +98,10 @@ services:
       - "5601:5601"
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - XPACK_SECURITY_ENABLED=false
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
     networks:
       - realtime-network
 
@@ -91,10 +124,14 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:-http://elasticsearch:9200}
     depends_on:
-      - mongodb
-      - redis
-      - rabbitmq
-      - elasticsearch
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     networks:
       - realtime-network
 
