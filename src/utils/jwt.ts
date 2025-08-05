@@ -58,7 +58,16 @@ export const generateTokens = (user: IUser) => {
 export const verifyAccessToken = (token: string): JWTPayload => {
   try {
     return jwt.verify(token, JWT_SECRET as string) as JWTPayload;
-  } catch (error) {
+  } catch (error: any) {
+    // JWT library'den gelen spesifik hata türlerini handle et
+    if (error.name === "TokenExpiredError") {
+      throw new Error("Token has expired");
+    } else if (error.name === "JsonWebTokenError") {
+      throw new Error("Invalid token format");
+    } else if (error.name === "NotBeforeError") {
+      throw new Error("Token not active yet");
+    }
+
     throw new Error("Invalid access token");
   }
 };
@@ -108,5 +117,46 @@ export const isTokenBlacklisted = async (token: string): Promise<boolean> => {
   } catch (error) {
     // Redis hatası durumunda güvenlik için true döner
     return true;
+  }
+};
+
+/**
+ * JWT token'ı debug etmek için utility fonksiyonu
+ */
+export const debugToken = (token: string) => {
+  try {
+    // Token'ı decode et (verify etmeden)
+    const decoded = jwt.decode(token, { complete: true });
+
+    if (!decoded) {
+      return { error: "Token could not be decoded" };
+    }
+
+    const payload = decoded.payload as any;
+    const header = decoded.header;
+
+    const now = Math.floor(Date.now() / 1000);
+    const isExpired = payload.exp && payload.exp < now;
+    const timeUntilExpiry = payload.exp ? payload.exp - now : null;
+
+    return {
+      header,
+      payload: {
+        userId: payload.userId,
+        username: payload.username,
+        email: payload.email,
+        issuedAt: payload.iat
+          ? new Date(payload.iat * 1000).toISOString()
+          : null,
+        expiresAt: payload.exp
+          ? new Date(payload.exp * 1000).toISOString()
+          : null,
+        isExpired,
+        timeUntilExpiry: timeUntilExpiry ? `${timeUntilExpiry}s` : null,
+      },
+      isValid: !isExpired,
+    };
+  } catch (error: any) {
+    return { error: error.message };
   }
 };

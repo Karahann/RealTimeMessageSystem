@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { captureError, captureMessage } from "../../config/sentry";
 import { logger } from "../../utils/logger";
+import { debugToken, isTokenBlacklisted } from "../../utils/jwt";
 
 const router = Router();
 
@@ -92,6 +93,76 @@ router.post("/sentry-message", (req, res) => {
 router.post("/throw-error", (req, res) => {
   // This will be caught by global error handler and sent to Sentry
   throw new Error("🔥 Unhandled Test Error - Testing global error handler!");
+});
+
+/**
+ * @swagger
+ * /api/test/debug-token:
+ *   post:
+ *     summary: Debug JWT token
+ *     description: Analyze a JWT token for debugging authentication issues
+ *     tags: [Testing]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: JWT token to debug
+ *             required:
+ *               - token
+ *     responses:
+ *       200:
+ *         description: Token analysis results
+ *       400:
+ *         description: Token missing or invalid
+ */
+router.post("/debug-token", async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: "Token is required",
+      });
+    }
+
+    // Debug token information
+    const tokenInfo = debugToken(token);
+
+    // Check if token is blacklisted
+    let blacklistStatus = null;
+    try {
+      blacklistStatus = await isTokenBlacklisted(token);
+    } catch (error) {
+      blacklistStatus = "Error checking blacklist status";
+    }
+
+    res.json({
+      success: true,
+      message: "Token debug information",
+      data: {
+        tokenInfo,
+        isBlacklisted: blacklistStatus,
+        environment: {
+          NODE_ENV: process.env.NODE_ENV,
+          JWT_SECRET_SET: !!process.env.JWT_SECRET,
+          ACCESS_TOKEN_EXPIRES_IN: process.env.ACCESS_TOKEN_EXPIRES_IN || "15m",
+        },
+      },
+    });
+  } catch (error: any) {
+    logger.error("Error in debug-token route:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to debug token",
+      error: error.message,
+    });
+  }
 });
 
 export default router;
