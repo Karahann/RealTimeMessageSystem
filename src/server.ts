@@ -59,14 +59,18 @@ app.use(sentryRequestHandler());
 // Sentry tracing middleware
 app.use(sentryTracingHandler());
 
+// Trust proxy for rate limiting and security
+// This enables proper IP identification when behind a proxy/load balancer
+app.set("trust proxy", true);
+
 // Security middleware
 app.use(helmet());
 app.use(cors());
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // limit each IP to 1000 requests per windowMs
+  windowMs: 60 * 1000, // 1 minute
+  max: 150, // limit each IP to 100 requests per windowMs
 });
 app.use(limiter);
 
