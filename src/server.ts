@@ -60,8 +60,9 @@ app.use(sentryRequestHandler());
 app.use(sentryTracingHandler());
 
 // Trust proxy for rate limiting and security
-// This enables proper IP identification when behind a proxy/load balancer
-app.set("trust proxy", true);
+// Configure a safe, non-permissive trust proxy setting
+// Set to the number of proxies in front of the app (1 is common for a single reverse proxy)
+app.set("trust proxy", 1);
 
 // Security middleware
 app.use(helmet());
@@ -71,6 +72,8 @@ app.use(cors());
 const limiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 150, // limit each IP to 100 requests per windowMs
+  legacyHeaders: false,
+  standardHeaders: true,
 });
 app.use(limiter);
 
@@ -197,6 +200,20 @@ app.use((err: any, req: any, res: any, next: any) => {
         ? "Internal server error"
         : err.message,
     ...(process.env.NODE_ENV !== "production" && { stack: err.stack }),
+  });
+});
+
+// Global process-level error safety to avoid hard crashes (causing 502s)
+process.on("unhandledRejection", (reason: any) => {
+  logger.error("Unhandled Promise Rejection:", {
+    reason: reason?.message || reason,
+  });
+});
+
+process.on("uncaughtException", (error: any) => {
+  logger.error("Uncaught Exception:", {
+    message: error?.message,
+    stack: error?.stack,
   });
 });
 

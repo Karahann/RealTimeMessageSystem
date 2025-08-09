@@ -9,6 +9,8 @@ import { RabbitMQService } from "../services/rabbitmq";
  */
 export class MessageScheduler {
   private static isRunning = false;
+  private static readonly timezone: string =
+    process.env.CRON_TIMEZONE || process.env.TZ || "UTC";
 
   /**
    * Mesaj zamanlama işini başlatır
@@ -19,29 +21,37 @@ export class MessageScheduler {
       return;
     }
 
-    // Her gece 02:00'da çalışır
-    cron.schedule("0 2 * * *", async () => {
-      try {
-        await this.scheduleMessages();
-      } catch (error) {
-        logger.error("Error in message scheduling:", error);
-      }
-    });
+    // Her gece 02:00'da çalışır (timezone yapılandırılabilir)
+    cron.schedule(
+      "0 2 * * *",
+      async () => {
+        try {
+          await this.scheduleMessages();
+        } catch (error) {
+          logger.error("Error in message scheduling:", error);
+        }
+      },
+      { timezone: this.timezone }
+    );
 
     this.isRunning = true;
-    logger.info("Message scheduler started - runs daily at 02:00");
+    logger.info(
+      `Message scheduler started - runs daily at 02:00 (timezone: ${this.timezone})`
+    );
   }
 
   /**
    * Aktif kullanıcılar için otomatik mesajlar zamanlar
    */
-  private static async scheduleMessages() {
+  private static async scheduleMessages(options?: {
+    immediate?: boolean;
+  }): Promise<number> {
     try {
       const activeUsers = await User.find({ isActive: true }).lean();
 
       if (activeUsers.length === 0) {
         logger.info("No active users found for message scheduling");
-        return;
+        return 0;
       }
 
       // Kullanıcıları karıştır
@@ -52,11 +62,14 @@ export class MessageScheduler {
         const sender = shuffledUsers[i];
         const receiver = shuffledUsers[i + 1] || shuffledUsers[0]; // Son kullanici için ilk kullaniciyi receiver yap
 
-        // Gelecek 24 saat içinde rastgele bir zaman seç
+        // Gönderim zamanı
         const sendDate = new Date();
-        sendDate.setHours(
-          sendDate.getHours() + Math.floor(Math.random() * 24) + 1
-        );
+        if (!options?.immediate) {
+          // Gelecek 24 saat içinde rastgele bir zaman seç
+          sendDate.setHours(
+            sendDate.getHours() + Math.floor(Math.random() * 24) + 1
+          );
+        }
 
         const autoMessage = {
           senderId: sender._id,
@@ -81,6 +94,7 @@ export class MessageScheduler {
       });
 
       logger.info(`Scheduled ${messagesToSchedule.length} automatic messages`);
+      return messagesToSchedule.length;
     } catch (error) {
       logger.error("Failed to schedule messages:", error);
       throw error;
