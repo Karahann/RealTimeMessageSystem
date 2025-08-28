@@ -29,7 +29,7 @@ async function bulkIndexMessages(): Promise<void> {
     // Connect to MongoDB
     const mongoUri =
       process.env.MONGO_URI ||
-      "mongodb://localhost:27017/realtimemessagesystem";
+      "mongodb://admin:password123@localhost:27017/realtimemessagesystem?authSource=admin";
     await mongoose.connect(mongoUri);
     console.log("✅ Connected to MongoDB");
 
