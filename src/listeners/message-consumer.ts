@@ -11,6 +11,9 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// chore: no-op comment to create a visible commit
+// This does not change runtime behavior.
+
 // Socket.IO instance for message broadcasting
 const httpServer = createServer();
 const io = new Server(httpServer, {
