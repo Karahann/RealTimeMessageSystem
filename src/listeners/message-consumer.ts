@@ -40,7 +40,7 @@ async function startMessageConsumer() {
       try {
         const { autoMessageId, senderId, receiverId, content } = messageData;
 
-        logger.info(`Processing automatic message: ${autoMessageId}`);
+        logger.info(`Processing automatic message: ${autoMessageId} `);
 
         // Create or get conversation between sender and receiver
         const conversation = await ConversationService.createOrGetConversation(
