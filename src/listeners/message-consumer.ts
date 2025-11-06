@@ -35,7 +35,6 @@ async function startMessageConsumer() {
 
     logger.info("Message consumer starting...");
 
-    // Consumer function
     await RabbitMQService.consumeMessages(async (messageData) => {
       try {
         const { autoMessageId, senderId, receiverId, content } = messageData;
